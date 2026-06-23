@@ -1,0 +1,923 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Attack & Defend</title>
+<style>
+* { margin:0; padding:0; box-sizing:border-box; }
+body {
+  background:#1a1f2e;
+  font-family:'Segoe UI',Arial,sans-serif;
+  overflow:hidden;
+  width:100vw; height:100vh;
+  display:flex; align-items:center; justify-content:center;
+  color:#fff;
+}
+#app {
+  width:100vw; height:100vh;
+  display:flex; align-items:center; justify-content:center;
+  position:relative;
+}
+.screen {
+  display:none; position:absolute; inset:0;
+  align-items:center; justify-content:center;
+  flex-direction:column; background:#1a1f2e;
+}
+.screen.active { display:flex; }
+
+/* TITLE */
+#titleScreen h1 {
+  font-size:clamp(26px,5vw,52px); font-weight:900;
+  letter-spacing:4px; text-transform:uppercase;
+  color:#e8e0c8; text-shadow:0 0 30px rgba(100,180,255,.4);
+  margin-bottom:10px;
+}
+#titleScreen p { color:#8899aa; font-size:clamp(11px,2vw,15px); margin-bottom:48px; letter-spacing:2px; }
+.role-buttons { display:flex; gap:20px; flex-wrap:wrap; justify-content:center; }
+.role-btn {
+  padding:20px 36px; border:none; border-radius:12px;
+  font-size:clamp(13px,2.2vw,17px); font-weight:700; cursor:pointer;
+  text-transform:uppercase; letter-spacing:2px; transition:all .15s; min-width:150px;
+}
+.role-btn:active { transform:scale(.95); }
+.attacker-btn { background:linear-gradient(135deg,#c0392b,#e74c3c); color:#fff; box-shadow:0 6px 24px rgba(231,76,60,.4); }
+.attacker-btn:hover { box-shadow:0 8px 32px rgba(231,76,60,.6); transform:translateY(-2px); }
+.defender-btn { background:linear-gradient(135deg,#1a6bb5,#2980b9); color:#fff; box-shadow:0 6px 24px rgba(41,128,185,.4); }
+.defender-btn:hover { box-shadow:0 8px 32px rgba(41,128,185,.6); transform:translateY(-2px); }
+
+/* WAITING */
+#waitingScreen .role-badge { font-size:clamp(18px,3.5vw,30px); font-weight:800; letter-spacing:3px; margin-bottom:20px; }
+.attacker-color { color:#e74c3c; }
+.defender-color { color:#3498db; }
+.spinner {
+  width:56px; height:56px; border:4px solid rgba(255,255,255,.1);
+  border-top-color:#64b4ff; border-radius:50%;
+  animation:spin .9s linear infinite; margin:28px auto;
+}
+@keyframes spin { to { transform:rotate(360deg); } }
+#waitingScreen p { color:#8899aa; font-size:13px; letter-spacing:1px; }
+
+/* GAME */
+#gameScreen { background:#0d1117; }
+#gameContainer { position:relative; }
+#gameCanvas { display:block; image-rendering:pixelated; cursor:default; }
+
+/* HUD */
+#hud {
+  position:absolute; top:0; left:0; right:0;
+  padding:7px 14px; display:flex; align-items:center; justify-content:space-between;
+  background:rgba(0,0,0,.6); backdrop-filter:blur(4px);
+  z-index:10; pointer-events:none;
+}
+#timerDisplay { font-size:clamp(16px,3.5vw,26px); font-weight:900; letter-spacing:3px; color:#e8e0c8; }
+#timerDisplay.urgent { color:#e74c3c; animation:pulse .5s ease infinite alternate; }
+@keyframes pulse { from{opacity:1} to{opacity:.4} }
+.hud-info { font-size:11px; color:#8899aa; }
+.hud-role { font-weight:700; font-size:13px; }
+.attacker-color { color:#e74c3c; }
+.defender-color { color:#3498db; }
+#objHpSpan { color:#f39c12; font-weight:700; }
+#defHpSpan  { color:#3498db; font-weight:700; }
+#cdBar { display:inline-block; width:70px; height:5px; background:rgba(255,255,255,.15); border-radius:3px; vertical-align:middle; overflow:hidden; margin-left:4px; }
+#cdFill { height:100%; background:#e74c3c; border-radius:3px; transition:width .05s linear; }
+
+/* D-pad */
+#dpad {
+  position:fixed; bottom:24px; left:16px; z-index:20;
+  display:none;
+}
+.dpad-grid {
+  display:grid;
+  grid-template-columns:repeat(3,56px);
+  grid-template-rows:repeat(3,56px);
+  gap:3px;
+}
+.dpad-btn {
+  background:rgba(255,255,255,.13); border:2px solid rgba(255,255,255,.22);
+  border-radius:10px; color:#fff; font-size:22px; cursor:pointer;
+  display:flex; align-items:center; justify-content:center;
+  user-select:none; -webkit-user-select:none; touch-action:none;
+}
+.dpad-btn.pressed, .dpad-btn:active { background:rgba(255,255,255,.32); }
+.dpad-empty { background:transparent; border:none; pointer-events:none; }
+
+/* Fire btn */
+#fireBtn {
+  position:fixed; bottom:44px; right:24px; z-index:20;
+  display:none; width:74px; height:74px; border-radius:50%;
+  background:linear-gradient(135deg,#c0392b,#e74c3c);
+  border:3px solid rgba(255,255,255,.3); color:#fff; font-size:28px;
+  cursor:pointer; align-items:center; justify-content:center;
+  box-shadow:0 4px 20px rgba(231,76,60,.5);
+  user-select:none; touch-action:none;
+}
+#fireBtn.show { display:flex; }
+
+/* RESULT */
+#resultScreen h2 { font-size:clamp(26px,6vw,56px); font-weight:900; letter-spacing:4px; text-transform:uppercase; margin-bottom:36px; }
+.back-btn {
+  padding:14px 38px; background:rgba(255,255,255,.1); border:2px solid rgba(255,255,255,.28);
+  border-radius:10px; color:#fff; font-size:15px; font-weight:700; cursor:pointer;
+  letter-spacing:2px; text-transform:uppercase; transition:all .15s;
+}
+.back-btn:hover { background:rgba(255,255,255,.2); }
+.back-btn:active { transform:scale(.95); }
+
+#statusMsg {
+  position:fixed; top:58px; left:50%; transform:translateX(-50%);
+  background:rgba(0,0,0,.82); padding:9px 22px; border-radius:18px;
+  font-weight:700; font-size:13px; pointer-events:none;
+  opacity:0; transition:opacity .3s; z-index:100; white-space:nowrap;
+}
+#statusMsg.show { opacity:1; }
+
+@media(max-width:700px) { #dpad { display:block; } }
+</style>
+</head>
+<body>
+<div id="app">
+
+<!-- TITLE -->
+<div id="titleScreen" class="screen active">
+  <h1>⚔ Attack &amp; Defend</h1>
+  <p>진영을 선택하고 상대를 기다리세요</p>
+  <div class="role-buttons">
+    <button class="role-btn attacker-btn" onclick="chooseRole('attacker')">⚔ 공격 진영</button>
+    <button class="role-btn defender-btn"  onclick="chooseRole('defender')">🛡 방어 진영</button>
+  </div>
+</div>
+
+<!-- WAITING -->
+<div id="waitingScreen" class="screen">
+  <div class="role-badge" id="waitRoleBadge"></div>
+  <div class="spinner"></div>
+  <p>상대방을 기다리는 중...</p>
+  <button class="back-btn" style="margin-top:28px" onclick="cancelWaiting()">취소</button>
+</div>
+
+<!-- GAME -->
+<div id="gameScreen" class="screen">
+  <div id="gameContainer">
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+      <div>
+        <div class="hud-role" id="hudRole"></div>
+        <div class="hud-info" id="hudExtra"></div>
+      </div>
+      <div id="timerDisplay">2:30</div>
+      <div style="text-align:right">
+        <div class="hud-info">목표: <span id="objHpSpan">5</span>/5</div>
+        <div class="hud-info">수비HP: <span id="defHpSpan">10</span>/10</div>
+      </div>
+    </div>
+  </div>
+  <div id="dpad">
+    <div class="dpad-grid">
+      <div class="dpad-empty"></div>
+      <button class="dpad-btn" data-dir="up">▲</button>
+      <div class="dpad-empty"></div>
+      <button class="dpad-btn" data-dir="left">◀</button>
+      <div class="dpad-empty"></div>
+      <button class="dpad-btn" data-dir="right">▶</button>
+      <div class="dpad-empty"></div>
+      <button class="dpad-btn" data-dir="down">▼</button>
+      <div class="dpad-empty"></div>
+    </div>
+  </div>
+  <button id="fireBtn">🏹</button>
+</div>
+
+<!-- RESULT -->
+<div id="resultScreen" class="screen">
+  <h2 id="resultTitle"></h2>
+  <button class="back-btn" onclick="goTitle()">← 처음으로</button>
+</div>
+
+<div id="statusMsg"></div>
+</div>
+
+<script>
+// ═══════════════════════════════════════════════════
+//  FIREBASE
+// ═══════════════════════════════════════════════════
+const FB_URL = "https://pixel-game-cd32a-default-rtdb.asia-southeast1.firebasedatabase.app";
+async function fbGet(p)      { try{ const r=await fetch(`${FB_URL}/${p}.json`); return r.ok?r.json():null; }catch{return null;} }
+async function fbSet(p,d)    { try{ await fetch(`${FB_URL}/${p}.json`,{method:'PUT',body:JSON.stringify(d)}); }catch{} }
+async function fbPatch(p,d)  { try{ await fetch(`${FB_URL}/${p}.json`,{method:'PATCH',body:JSON.stringify(d)}); }catch{} }
+async function fbDelete(p)   { try{ await fetch(`${FB_URL}/${p}.json`,{method:'DELETE'}); }catch{} }
+function fbListen(p,cb,ms=200){
+  let last;
+  const poll=async()=>{ const v=await fbGet(p); const s=JSON.stringify(v); if(s!==last){last=s;cb(v);} };
+  poll(); const id=setInterval(poll,ms); return ()=>clearInterval(id);
+}
+
+// ═══════════════════════════════════════════════════
+//  MAP  (36 cols × 26 rows, tile=32px)
+//  0=floor  1=wall  2=void(outside playable area)
+//  Design goals:
+//   - Attacker spawn: bottom-left area
+//   - Objective: upper-right open area (NOT against wall)
+//   - Wide path: goes around the south side — far from objective, easy travel
+//   - Narrow path: cuts through centre corridors — closer angle to objective but tight
+// ═══════════════════════════════════════════════════
+const TILE = 32;
+const COLS = 36;
+const ROWS = 26;
+
+// Each string is one row, left→right, top→bottom
+const RAW_MAP = [
+  "222222222222222222222222222222222222", // 0
+  "211111111111111111111111111111111112", // 1  top border
+  "210000000000000000000000000000000012", // 2
+  "210000000000001100000000000000000012", // 3  wall segment (narrow path top)
+  "210000000000001100000000000000000012", // 4
+  "210001111111001100000000000000000012", // 5  narrow corridor wall left
+  "210001000001001100000000000000000012", // 6
+  "210001011101001100000000001111111112", // 7  right boundary inner
+  "210001010001000000000000001000000012", // 8
+  "210001011101000000000000001000000012", // 9
+  "210001000001000000000000001000000012", // 10
+  "210001111111000000000000001000000012", // 11
+  "210000000000000000000000001000000012", // 12
+  "210000000000000110000000001000000012", // 13 narrow passage wall
+  "210000000000000110000000001111111112", // 14
+  "210000000000000110000000000000000012", // 15
+  "210000000000000110000000000000000012", // 16
+  "210000000000000000000000000000000012", // 17 wide path south corridor
+  "210000000000000000000000000000000012", // 18
+  "211111110000000000000000000000000012", // 19 attacker area left wall
+  "200000010000000000000000000000000012", // 20
+  "200000010000000000000000000000111112", // 21
+  "200000011111111111100000000000000002", // 22
+  "200000000000000000000000000000000002", // 23
+  "222222222222222222222222222222222222", // 24
+  "222222222222222222222222222222222222", // 25
+];
+
+const MAP_DATA = RAW_MAP.map(row=>row.split('').map(Number));
+
+// Key positions
+const ATTACKER_SPAWN = { x:2,  y:20 };  // left side, open area
+const OBJECTIVE_POS  = { x:28, y:10 };  // right side, open (not touching wall)
+const DEFENDER_SPAWN = { x:28, y:10 };
+
+// Decorative crates near objective (block movement, stop arrows)
+const CRATE_TILES = [
+  {x:24,y:8},{x:25,y:8},
+  {x:24,y:12},
+];
+
+function isWalkable(tx,ty){
+  if(tx<0||ty<0||tx>=COLS||ty>=ROWS) return false;
+  const c=MAP_DATA[ty]?.[tx];
+  if(c===1||c===2) return false;
+  for(const cr of CRATE_TILES) if(cr.x===tx&&cr.y===ty) return false;
+  return true;
+}
+
+// ═══════════════════════════════════════════════════
+//  CAMERA (viewport = 15×11 tiles)
+// ═══════════════════════════════════════════════════
+const VP_COLS = 15;  // viewport width in tiles
+const VP_ROWS = 11;  // viewport height in tiles
+
+let camTX = 0, camTY = 0;  // top-left tile of camera (can be fractional for smooth scroll)
+
+function updateCamera(focusTX, focusTY){
+  // Target: keep focus tile centered
+  let tx = focusTX - VP_COLS/2 + 0.5;
+  let ty = focusTY - VP_ROWS/2 + 0.5;
+  // Clamp to map bounds
+  tx = Math.max(0, Math.min(COLS-VP_COLS, tx));
+  ty = Math.max(0, Math.min(ROWS-VP_ROWS, ty));
+  // Smooth follow
+  camTX += (tx - camTX) * 0.18;
+  camTY += (ty - camTY) * 0.18;
+}
+
+// ═══════════════════════════════════════════════════
+//  GAME STATE
+// ═══════════════════════════════════════════════════
+let myRole=null, myId=null, roomId=null;
+let gameState=null, localState=null;
+let unsub=null, gameLoopId=null, lastTime=0;
+
+// Input — step-based movement
+const keys={};
+// Per-direction: ms since key went down (for repeat)
+const moveTimer={ up:0,down:0,left:0,right:0 };
+// First-step fires immediately; repeat fires every MOVE_REPEAT ms
+const MOVE_FIRST  = 0;    // immediate on keydown
+const MOVE_REPEAT = 180;  // ms between repeated steps (slower, deliberate)
+let mobileDirHeld=null;
+const mobileHoldTimer={ up:0,down:0,left:0,right:0 };
+
+// Arrows (attacker only)
+let arrows=[];
+let arrowCD=0;
+const ARROW_CD    = 800;   // ms cooldown
+const ARROW_SPEED = 8;     // tiles/sec  (≈ 2× walk speed of ~4 tiles/sec)
+const ARROW_RANGE = 7;     // max tiles
+
+// ═══════════════════════════════════════════════════
+//  CANVAS
+// ═══════════════════════════════════════════════════
+const canvas=document.getElementById('gameCanvas');
+const ctx=canvas.getContext('2d');
+
+function resizeCanvas(){
+  const vw=window.innerWidth, vh=window.innerHeight-44;
+  // Scale so viewport fits screen
+  const scale=Math.min(vw/(VP_COLS*TILE), vh/(VP_ROWS*TILE));
+  canvas.width  = Math.round(VP_COLS*TILE*scale);
+  canvas.height = Math.round(VP_ROWS*TILE*scale);
+}
+
+// ═══════════════════════════════════════════════════
+//  SCREEN HELPERS
+// ═══════════════════════════════════════════════════
+function showScreen(id){
+  document.querySelectorAll('.screen').forEach(s=>s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+function showStatus(msg,ms=2200){
+  const el=document.getElementById('statusMsg');
+  el.textContent=msg; el.classList.add('show');
+  setTimeout(()=>el.classList.remove('show'),ms);
+}
+function randId(){ return Math.random().toString(36).slice(2,10); }
+
+// ═══════════════════════════════════════════════════
+//  MATCHMAKING
+// ═══════════════════════════════════════════════════
+async function chooseRole(role){
+  myRole=role; myId=randId();
+  const badge=document.getElementById('waitRoleBadge');
+  badge.textContent=role==='attacker'?'⚔ 공격 진영':'🛡 방어 진영';
+  badge.className='role-badge '+(role==='attacker'?'attacker-color':'defender-color');
+  showScreen('waitingScreen');
+
+  const opp=role==='attacker'?'defender':'attacker';
+  const lobby=await fbGet('lobby');
+  let matched=false;
+
+  if(lobby){
+    for(const [wId,wData] of Object.entries(lobby)){
+      if(wData.role===opp&&wData.status==='waiting'){
+        roomId=wData.roomId; matched=true;
+        await fbPatch(`lobby/${wId}`,{status:'matched'});
+        await fbPatch(`rooms/${roomId}`,{
+          [role]:mkPlayerState(role),
+          started:true
+        });
+        break;
+      }
+    }
+  }
+
+  if(!matched){
+    roomId=randId();
+    await fbSet(`lobby/${myId}`,{role,roomId,status:'waiting'});
+    await fbSet(`rooms/${roomId}`,{
+      attacker: role==='attacker'?mkPlayerState('attacker'):null,
+      defender: role==='defender'?mkPlayerState('defender'):null,
+      objective:{hp:5},
+      timer:150,
+      started:false,
+      winner:null,
+      arrows:[]
+    });
+    unsub=fbListen(`lobby/${myId}`,async d=>{
+      if(d&&d.status==='matched'){
+        if(unsub){unsub();unsub=null;}
+        await fbDelete(`lobby/${myId}`);
+        startGame();
+      }
+    },400);
+    return;
+  }
+  await fbDelete(`lobby/${myId}`).catch(()=>{});
+  startGame();
+}
+
+function mkPlayerState(role){
+  const sp=role==='attacker'?ATTACKER_SPAWN:DEFENDER_SPAWN;
+  return {id:myId,x:sp.x,y:sp.y,dir:'right',alive:true,
+          invincible:false,invTimer:0,hp:10,deadTimer:0};
+}
+
+async function cancelWaiting(){
+  if(unsub){unsub();unsub=null;}
+  if(myId)  await fbDelete(`lobby/${myId}`).catch(()=>{});
+  if(roomId)await fbDelete(`rooms/${roomId}`).catch(()=>{});
+  goTitle();
+}
+
+// ═══════════════════════════════════════════════════
+//  GAME START
+// ═══════════════════════════════════════════════════
+function startGame(){
+  ended=false;
+  resizeCanvas();
+  showScreen('gameScreen');
+  const hr=document.getElementById('hudRole');
+  hr.textContent=myRole==='attacker'?'⚔ 공격 진영':'🛡 방어 진영';
+  hr.className='hud-role '+(myRole==='attacker'?'attacker-color':'defender-color');
+  if(myRole==='attacker') document.getElementById('fireBtn').classList.add('show');
+
+  const sp=myRole==='attacker'?ATTACKER_SPAWN:DEFENDER_SPAWN;
+  localState={
+    attacker:{ x:ATTACKER_SPAWN.x, y:ATTACKER_SPAWN.y, dir:'right',
+               alive:true, invincible:false, invTimer:0, hp:10, deadTimer:0 },
+    defender:{ x:DEFENDER_SPAWN.x,  y:DEFENDER_SPAWN.y,  dir:'right',
+               alive:true, invincible:false, invTimer:0, hp:10, deadTimer:0 },
+    objective:{hp:5},
+    timer:150,
+    winner:null,
+  };
+  camTX=sp.x-VP_COLS/2; camTY=sp.y-VP_ROWS/2;
+
+  arrows=[]; arrowCD=0;
+  lastTime=performance.now();
+
+  unsub=fbListen(`rooms/${roomId}`,d=>{
+    if(!d)return;
+    gameState=d;
+    // Sync remote arrow hits on objective
+    if(d.objective&&d.objective.hp!==undefined){
+      localState.objective.hp=d.objective.hp;
+    }
+    // Sync remote defender state to local (defender manages own HP via server)
+    if(myRole==='attacker'&&d.defender){
+      localState.defender.x=d.defender.x??localState.defender.x;
+      localState.defender.y=d.defender.y??localState.defender.y;
+      localState.defender.dir=d.defender.dir??localState.defender.dir;
+      localState.defender.alive=d.defender.alive??true;
+      localState.defender.hp=d.defender.hp??10;
+    }
+    if(myRole==='defender'&&d.attacker){
+      localState.attacker.x=d.attacker.x??localState.attacker.x;
+      localState.attacker.y=d.attacker.y??localState.attacker.y;
+      localState.attacker.dir=d.attacker.dir??localState.attacker.dir;
+      localState.attacker.alive=d.attacker.alive??true;
+      localState.attacker.invincible=d.attacker.invincible??false;
+    }
+    if(d.winner&&d.winner!=='pending'&&!ended) endGame(d.winner);
+  },150);
+
+  gameLoopId=requestAnimationFrame(gameLoop);
+  if(myRole==='attacker') startServerTimer();
+}
+
+let serverTimerInterval=null;
+function startServerTimer(){
+  let t=150;
+  serverTimerInterval=setInterval(async()=>{
+    if(ended){clearInterval(serverTimerInterval);return;}
+    t-=0.2;
+    if(t<=0){
+      clearInterval(serverTimerInterval);
+      await fbPatch(`rooms/${roomId}`,{timer:0,winner:'defender'});
+    } else {
+      await fbPatch(`rooms/${roomId}`,{timer:Math.max(0,t)});
+    }
+  },200);
+}
+
+// ═══════════════════════════════════════════════════
+//  GAME LOOP
+// ═══════════════════════════════════════════════════
+function gameLoop(now){
+  const dt=Math.min(now-lastTime,80); lastTime=now;
+  if(!localState){ gameLoopId=requestAnimationFrame(gameLoop); return; }
+
+  handleInput(dt);
+  updateArrows(dt);
+  checkCollisions();
+  syncToServer();
+  updateHUD();
+  render();
+
+  gameLoopId=requestAnimationFrame(gameLoop);
+}
+
+// ═══════════════════════════════════════════════════
+//  INPUT  (step-based, 1 tile per trigger)
+// ═══════════════════════════════════════════════════
+function handleInput(dt){
+  const me=myRole==='attacker'?localState.attacker:localState.defender;
+
+  // Cooldown tick
+  if(arrowCD>0) arrowCD-=dt;
+
+  // Invincible tick
+  if(me.invTimer>0){
+    me.invTimer-=dt;
+    if(me.invTimer<=0){me.invincible=false;me.invTimer=0;}
+  }
+
+  // Dead timer tick
+  if(!me.alive){
+    if(me.deadTimer>0){ me.deadTimer-=dt; if(me.deadTimer<=0) respawn(); }
+    return;
+  }
+
+  const dirs=['up','down','left','right'];
+  for(const dir of dirs){
+    const held=keys[dir]||(mobileDirHeld===dir);
+    if(held){
+      moveTimer[dir]+=dt;
+      if(moveTimer[dir]>=MOVE_REPEAT){
+        moveTimer[dir]=0;
+        tryMove(dir);
+      }
+    } else {
+      moveTimer[dir]=0;
+    }
+  }
+}
+
+function tryMove(dir){
+  const me=myRole==='attacker'?localState.attacker:localState.defender;
+  if(!me.alive) return;
+  me.dir=dir;
+  let nx=me.x, ny=me.y;
+  if(dir==='up')    ny--;
+  if(dir==='down')  ny++;
+  if(dir==='left')  nx--;
+  if(dir==='right') nx++;
+  if(isWalkable(nx,ny)){ me.x=nx; me.y=ny; }
+}
+
+function fireArrow(){
+  if(myRole!=='attacker') return;
+  if(arrowCD>0) return;
+  const me=localState.attacker;
+  if(!me.alive) return;
+  arrowCD=ARROW_CD;
+  const dmap={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
+  const [dx,dy]=dmap[me.dir]||[1,0];
+  arrows.push({ x:me.x+.5, y:me.y+.5, dx, dy, dist:0, id:randId() });
+}
+
+// ═══════════════════════════════════════════════════
+//  ARROWS
+// ═══════════════════════════════════════════════════
+function updateArrows(dt){
+  const step=ARROW_SPEED*dt/1000;
+  arrows=arrows.filter(a=>{
+    a.x+=a.dx*step; a.y+=a.dy*step; a.dist+=step;
+    return a.dist<ARROW_RANGE;
+  });
+}
+
+// ═══════════════════════════════════════════════════
+//  COLLISIONS  (attacker owns arrows & processes hits)
+// ═══════════════════════════════════════════════════
+function checkCollisions(){
+  if(!localState) return;
+  const atk=localState.attacker;
+  const def=localState.defender;
+
+  if(myRole==='attacker'){
+    const toRemove=new Set();
+    for(const a of arrows){
+      const tx=Math.floor(a.x), ty=Math.floor(a.y);
+
+      // Hit objective
+      if(localState.objective.hp>0 && tx===OBJECTIVE_POS.x && ty===OBJECTIVE_POS.y){
+        toRemove.add(a.id);
+        const newHp=Math.max(0,localState.objective.hp-1);
+        localState.objective.hp=newHp;
+        if(newHp<=0){
+          fbPatch(`rooms/${roomId}`,{'objective/hp':0,winner:'attacker'});
+        } else {
+          fbPatch(`rooms/${roomId}`,{'objective/hp':newHp});
+        }
+        continue;
+      }
+
+      // Hit crates (stop arrow)
+      for(const cr of CRATE_TILES){
+        if(cr.x===tx&&cr.y===ty){ toRemove.add(a.id); break; }
+      }
+      if(toRemove.has(a.id)) continue;
+
+      // Hit defender
+      if(def.alive && tx===def.x && ty===def.y){
+        toRemove.add(a.id);
+        const newHp=Math.max(0,def.hp-1);
+        def.hp=newHp;
+        if(newHp<=0){
+          def.alive=false; def.hp=10; def.deadTimer=2000;
+          fbPatch(`rooms/${roomId}`,{'defender/hp':10,'defender/alive':false,'defender/deadTimer':2000});
+        } else {
+          fbPatch(`rooms/${roomId}`,{'defender/hp':newHp});
+        }
+      }
+    }
+    arrows=arrows.filter(a=>!toRemove.has(a.id));
+
+    // Defender contact kills attacker (checked via synced positions)
+    if(def.alive&&atk.alive&&!atk.invincible){
+      if(atk.x===def.x && atk.y===def.y){
+        atk.alive=false; atk.deadTimer=2000;
+        fbPatch(`rooms/${roomId}`,{'attacker/alive':false,'attacker/deadTimer':2000});
+      }
+    }
+  }
+
+  // Defender: respawn dead timer is handled in handleInput
+}
+
+function respawn(){
+  const me=myRole==='attacker'?localState.attacker:localState.defender;
+  const sp=myRole==='attacker'?ATTACKER_SPAWN:DEFENDER_SPAWN;
+  me.x=sp.x; me.y=sp.y;
+  me.alive=true; me.deadTimer=0;
+  if(myRole==='attacker'){
+    me.invincible=true; me.invTimer=2000;
+    fbPatch(`rooms/${roomId}`,{
+      'attacker/alive':true,'attacker/x':sp.x,'attacker/y':sp.y,
+      'attacker/invincible':true
+    });
+  } else {
+    me.hp=10;
+    fbPatch(`rooms/${roomId}`,{
+      'defender/alive':true,'defender/x':sp.x,'defender/y':sp.y,'defender/hp':10
+    });
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  SYNC TO SERVER  (throttled)
+// ═══════════════════════════════════════════════════
+let _syncTick=0;
+async function syncToServer(){
+  _syncTick++;
+  if(_syncTick%4!==0) return;
+  if(!roomId) return;
+  const me=myRole==='attacker'?localState.attacker:localState.defender;
+  const patch={
+    [`${myRole}/x`]:me.x,[`${myRole}/y`]:me.y,[`${myRole}/dir`]:me.dir,
+    [`${myRole}/alive`]:me.alive,[`${myRole}/invincible`]:!!me.invincible,
+    [`${myRole}/hp`]:me.hp
+  };
+  if(myRole==='attacker'){
+    patch.arrows=arrows.map(a=>({x:a.x,y:a.y,dx:a.dx,dy:a.dy,id:a.id}));
+  }
+  await fbPatch(`rooms/${roomId}`,patch);
+}
+
+// ═══════════════════════════════════════════════════
+//  HUD
+// ═══════════════════════════════════════════════════
+function updateHUD(){
+  const t=gameState?gameState.timer:localState.timer;
+  const s=Math.ceil(t);
+  const m=Math.floor(s/60);
+  const sec=s%60;
+  const tel=document.getElementById('timerDisplay');
+  tel.textContent=`${m}:${sec.toString().padStart(2,'0')}`;
+  tel.className='timer-display'+(s<=30?' urgent':'');
+
+  document.getElementById('objHpSpan').textContent=Math.max(0,localState.objective.hp);
+  document.getElementById('defHpSpan').textContent=Math.max(0,localState.defender.hp);
+
+  if(myRole==='attacker'){
+    const pct=Math.max(0,1-arrowCD/ARROW_CD)*100;
+    document.getElementById('hudExtra').innerHTML=
+      `쿨다운<span id="cdBar"><span id="cdFill" style="width:${pct}%"></span></span>`;
+  }
+}
+
+// ═══════════════════════════════════════════════════
+//  RENDER  (viewport camera)
+// ═══════════════════════════════════════════════════
+function render(){
+  if(!localState) return;
+  const me=myRole==='attacker'?localState.attacker:localState.defender;
+  updateCamera(me.x, me.y);
+
+  const scaleX=canvas.width /(VP_COLS*TILE);
+  const scaleY=canvas.height/(VP_ROWS*TILE);
+
+  ctx.clearRect(0,0,canvas.width,canvas.height);
+  ctx.save();
+  ctx.scale(scaleX,scaleY);
+
+  // Offset: camera top-left in pixels
+  const offX=-camTX*TILE;
+  const offY=-camTY*TILE;
+  ctx.translate(offX,offY);
+
+  // ── MAP ──
+  const minTX=Math.max(0,Math.floor(camTX));
+  const maxTX=Math.min(COLS-1,Math.ceil(camTX+VP_COLS));
+  const minTY=Math.max(0,Math.floor(camTY));
+  const maxTY=Math.min(ROWS-1,Math.ceil(camTY+VP_ROWS));
+
+  for(let ty=minTY;ty<=maxTY;ty++){
+    for(let tx=minTX;tx<=maxTX;tx++){
+      const cell=MAP_DATA[ty]?.[tx]??2;
+      const px=tx*TILE, py=ty*TILE;
+      if(cell===2){ ctx.fillStyle='#0d1117'; ctx.fillRect(px,py,TILE,TILE); continue; }
+      if(cell===1){
+        ctx.fillStyle='#3a4155'; ctx.fillRect(px,py,TILE,TILE);
+        ctx.fillStyle='#4a5168'; ctx.fillRect(px,py,TILE,3); ctx.fillRect(px,py,3,TILE);
+        ctx.fillStyle='#2e3448'; ctx.fillRect(px,py+TILE-3,TILE,3); ctx.fillRect(px+TILE-3,py,3,TILE);
+        continue;
+      }
+      // floor
+      ctx.fillStyle=(tx+ty)%2===0?'#caccd8':'#bec0cc';
+      ctx.fillRect(px,py,TILE,TILE);
+      ctx.strokeStyle='rgba(0,0,0,.08)'; ctx.lineWidth=.5;
+      ctx.strokeRect(px,py,TILE,TILE);
+    }
+  }
+
+  // ── ATTACKER SPAWN ZONE ──
+  {
+    const px=(ATTACKER_SPAWN.x-1)*TILE, py=(ATTACKER_SPAWN.y-1)*TILE;
+    ctx.fillStyle='rgba(200,50,50,.18)';
+    ctx.fillRect(px,py,TILE*3,TILE*3);
+    ctx.strokeStyle='rgba(220,60,60,.5)'; ctx.lineWidth=2;
+    ctx.strokeRect(px,py,TILE*3,TILE*3);
+    ctx.fillStyle='rgba(220,80,80,.7)';
+    ctx.font=`bold ${TILE*.28}px Arial`; ctx.textAlign='center';
+    ctx.fillText('SPAWN',px+TILE*1.5,py+TILE*3.4);
+  }
+
+  // ── CRATES ──
+  for(const c of CRATE_TILES){
+    const px=c.x*TILE, py=c.y*TILE;
+    ctx.fillStyle='#a07020'; ctx.fillRect(px+1,py+1,TILE-2,TILE-2);
+    ctx.fillStyle='#d49a30'; ctx.fillRect(px+3,py+3,TILE*.45,TILE*.45);
+    ctx.fillStyle='#7a5010';
+    ctx.fillRect(px,py+TILE/2-1,TILE,2);
+    ctx.fillRect(px+TILE/2-1,py,2,TILE);
+    ctx.strokeStyle='#5a3a08'; ctx.lineWidth=1.5;
+    ctx.strokeRect(px+1,py+1,TILE-2,TILE-2);
+  }
+
+  // ── OBJECTIVE ──
+  const objHp=localState.objective.hp;
+  if(objHp>0){
+    const px=OBJECTIVE_POS.x*TILE, py=OBJECTIVE_POS.y*TILE;
+    // Pulse glow
+    const pulse=.7+.3*Math.sin(Date.now()*.004);
+    const grd=ctx.createRadialGradient(px+TILE/2,py+TILE/2,2,px+TILE/2,py+TILE/2,TILE*1.1);
+    grd.addColorStop(0,`rgba(80,180,255,${pulse*.7})`);
+    grd.addColorStop(1,'rgba(80,180,255,0)');
+    ctx.fillStyle=grd;
+    ctx.fillRect(px-TILE*.6,py-TILE*.6,TILE*2.2,TILE*2.2);
+    // Core orb
+    ctx.fillStyle='#2266cc'; ctx.beginPath();
+    ctx.arc(px+TILE/2,py+TILE/2,TILE*.4,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#66aaff'; ctx.beginPath();
+    ctx.arc(px+TILE/2,py+TILE/2,TILE*.28,0,Math.PI*2); ctx.fill();
+    ctx.fillStyle='#cceeff'; ctx.beginPath();
+    ctx.arc(px+TILE/2-3,py+TILE/2-3,TILE*.1,0,Math.PI*2); ctx.fill();
+    // HP bar
+    ctx.fillStyle='#111'; ctx.fillRect(px,py+TILE+3,TILE,5);
+    ctx.fillStyle='#4af'; ctx.fillRect(px,py+TILE+3,TILE*objHp/5,5);
+  }
+
+  // ── CHARACTERS ──
+  // Determine what to draw for attacker & defender
+  const atkLocal=localState.attacker;
+  const defLocal=localState.defender;
+
+  // Defender (blue)
+  if(defLocal.alive){
+    drawChar(defLocal.x,defLocal.y,defLocal.dir,'#1a7acc',defLocal.hp,10,false);
+  } else {
+    drawTombstone(defLocal.x,defLocal.y);
+  }
+
+  // Attacker (red)
+  if(atkLocal.alive){
+    drawChar(atkLocal.x,atkLocal.y,atkLocal.dir,'#cc2222',null,null,atkLocal.invincible);
+  }
+
+  // ── ARROWS ──
+  const arrowsToDraw=myRole==='attacker'?arrows:(gameState?.arrows??[]);
+  for(const a of arrowsToDraw) drawArrow(a);
+
+  ctx.restore();
+}
+
+function drawChar(tx,ty,dir,color,hp,maxHp,invincible){
+  if(invincible&&Math.floor(Date.now()/120)%2===0) return;
+  const px=tx*TILE+TILE/2, py=ty*TILE+TILE/2;
+  const r=TILE*.36;
+  // Shadow
+  ctx.fillStyle='rgba(0,0,0,.3)';
+  ctx.beginPath(); ctx.ellipse(px,py+r*.6,r*.7,r*.22,0,0,Math.PI*2); ctx.fill();
+  // Body
+  ctx.fillStyle=color; ctx.beginPath(); ctx.arc(px,py,r,0,Math.PI*2); ctx.fill();
+  ctx.fillStyle='rgba(255,255,255,.22)'; ctx.beginPath(); ctx.arc(px-2,py-2,r*.42,0,Math.PI*2); ctx.fill();
+  // Direction dot
+  const dm={up:[0,-1],down:[0,1],left:[-1,0],right:[1,0]};
+  const [ddx,ddy]=dm[dir]||[1,0];
+  ctx.fillStyle='rgba(255,255,255,.85)';
+  ctx.beginPath(); ctx.arc(px+ddx*r*.6,py+ddy*r*.6,TILE*.09,0,Math.PI*2); ctx.fill();
+  // HP bar
+  if(hp!==null){
+    ctx.fillStyle='#111'; ctx.fillRect(tx*TILE,ty*TILE-7,TILE,4);
+    ctx.fillStyle=hp>maxHp*.4?'#2ecc71':'#e74c3c';
+    ctx.fillRect(tx*TILE,ty*TILE-7,TILE*hp/maxHp,4);
+  }
+}
+
+function drawTombstone(tx,ty){
+  const px=tx*TILE, py=ty*TILE;
+  ctx.fillStyle='#556'; ctx.fillRect(px+TILE*.28,py+TILE*.32,TILE*.44,TILE*.58);
+  ctx.beginPath(); ctx.arc(px+TILE/2,py+TILE*.32,TILE*.22,Math.PI,0); ctx.fill();
+  ctx.fillStyle='#889'; ctx.font=`${TILE*.32}px sans-serif`; ctx.textAlign='center';
+  ctx.fillText('✝',px+TILE/2,py+TILE*.66);
+}
+
+function drawArrow(a){
+  const px=a.x*TILE, py=a.y*TILE;
+  ctx.save(); ctx.translate(px,py);
+  ctx.rotate(Math.atan2(a.dy,a.dx));
+  ctx.fillStyle='#f0c030';
+  ctx.fillRect(-TILE*.28,-2,TILE*.42,4);
+  ctx.fillStyle='#e05010';
+  ctx.beginPath(); ctx.moveTo(TILE*.14,-5); ctx.lineTo(TILE*.3,0); ctx.lineTo(TILE*.14,5); ctx.fill();
+  ctx.restore();
+}
+
+// ═══════════════════════════════════════════════════
+//  END GAME
+// ═══════════════════════════════════════════════════
+let ended=false;
+function endGame(winner){
+  if(ended) return; ended=true;
+  cancelAnimationFrame(gameLoopId);
+  clearInterval(serverTimerInterval);
+  if(unsub){unsub();unsub=null;}
+  const el=document.getElementById('resultTitle');
+  if(winner==='attacker'){ el.textContent='⚔ 공격 승리!'; el.style.color='#e74c3c'; }
+  else                   { el.textContent='🛡 방어 승리!'; el.style.color='#3498db'; }
+  showScreen('resultScreen');
+}
+
+function goTitle(){
+  ended=false; localState=null; gameState=null;
+  myRole=null; myId=null; roomId=null; arrows=[];
+  document.getElementById('fireBtn').classList.remove('show');
+  clearInterval(serverTimerInterval);
+  showScreen('titleScreen');
+}
+
+// ═══════════════════════════════════════════════════
+//  KEYBOARD
+// ═══════════════════════════════════════════════════
+const KMAP={ ArrowUp:'up',ArrowDown:'down',ArrowLeft:'left',ArrowRight:'right',
+             w:'up',s:'down',a:'left',d:'right' };
+
+document.addEventListener('keydown',e=>{
+  const dir=KMAP[e.key];
+  if(dir){
+    e.preventDefault();
+    if(!keys[dir]){
+      keys[dir]=true;
+      moveTimer[dir]=MOVE_REPEAT; // fire immediately on first press
+      tryMove(dir);
+    }
+  }
+  if(e.code==='Space'){ e.preventDefault(); fireArrow(); }
+});
+document.addEventListener('keyup',e=>{
+  const dir=KMAP[e.key];
+  if(dir){ keys[dir]=false; moveTimer[dir]=0; }
+});
+
+// ═══════════════════════════════════════════════════
+//  MOBILE D-PAD
+// ═══════════════════════════════════════════════════
+document.querySelectorAll('.dpad-btn').forEach(btn=>{
+  const dir=btn.dataset.dir;
+  btn.addEventListener('touchstart',e=>{
+    e.preventDefault();
+    mobileDirHeld=dir; btn.classList.add('pressed');
+    moveTimer[dir]=MOVE_REPEAT; tryMove(dir); // immediate step
+  },{passive:false});
+  btn.addEventListener('touchend',e=>{
+    e.preventDefault();
+    mobileDirHeld=null; btn.classList.remove('pressed'); moveTimer[dir]=0;
+  },{passive:false});
+});
+
+document.getElementById('fireBtn').addEventListener('touchstart',e=>{ e.preventDefault(); fireArrow(); },{passive:false});
+document.getElementById('fireBtn').addEventListener('click',fireArrow);
+
+window.addEventListener('resize',()=>{
+  if(document.getElementById('gameScreen').classList.contains('active')) resizeCanvas();
+});
+</script>
+</body>
+</html>
