@@ -1,0 +1,1065 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, user-scalable=no">
+<title>Attack & Defend</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    background: #1a1f2e;
+    font-family: 'Segoe UI', Arial, sans-serif;
+    overflow: hidden;
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: #fff;
+  }
+  #app {
+    width: 100vw;
+    height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    position: relative;
+  }
+
+  /* ── SCREENS ── */
+  .screen {
+    display: none;
+    position: absolute;
+    inset: 0;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    background: #1a1f2e;
+  }
+  .screen.active { display: flex; }
+
+  /* Title */
+  #titleScreen h1 {
+    font-size: clamp(28px, 6vw, 56px);
+    font-weight: 900;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    color: #e8e0c8;
+    text-shadow: 0 0 30px rgba(100,180,255,0.4);
+    margin-bottom: 12px;
+  }
+  #titleScreen p {
+    color: #8899aa;
+    font-size: clamp(12px, 2.5vw, 16px);
+    margin-bottom: 50px;
+    letter-spacing: 2px;
+  }
+  .role-buttons {
+    display: flex;
+    gap: 24px;
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+  .role-btn {
+    padding: 22px 38px;
+    border: none;
+    border-radius: 12px;
+    font-size: clamp(14px, 2.5vw, 18px);
+    font-weight: 700;
+    cursor: pointer;
+    text-transform: uppercase;
+    letter-spacing: 2px;
+    transition: all 0.15s;
+    min-width: 160px;
+  }
+  .role-btn:active { transform: scale(0.95); }
+  .attacker-btn {
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    color: #fff;
+    box-shadow: 0 6px 24px rgba(231,76,60,0.4);
+  }
+  .attacker-btn:hover { box-shadow: 0 8px 32px rgba(231,76,60,0.6); transform: translateY(-2px); }
+  .defender-btn {
+    background: linear-gradient(135deg, #1a6bb5, #2980b9);
+    color: #fff;
+    box-shadow: 0 6px 24px rgba(41,128,185,0.4);
+  }
+  .defender-btn:hover { box-shadow: 0 8px 32px rgba(41,128,185,0.6); transform: translateY(-2px); }
+
+  /* Waiting */
+  #waitingScreen .role-badge {
+    font-size: clamp(20px, 4vw, 32px);
+    font-weight: 800;
+    letter-spacing: 3px;
+    margin-bottom: 20px;
+  }
+  .attacker-color { color: #e74c3c; }
+  .defender-color { color: #3498db; }
+  .spinner {
+    width: 60px; height: 60px;
+    border: 4px solid rgba(255,255,255,0.1);
+    border-top-color: #64b4ff;
+    border-radius: 50%;
+    animation: spin 0.9s linear infinite;
+    margin: 30px auto;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #waitingScreen p { color: #8899aa; font-size: 14px; letter-spacing: 1px; }
+
+  /* Game */
+  #gameScreen {
+    background: #1a1f2e;
+  }
+  #gameContainer {
+    position: relative;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  #gameCanvas {
+    display: block;
+    image-rendering: pixelated;
+  }
+
+  /* HUD */
+  #hud {
+    position: absolute;
+    top: 0; left: 0; right: 0;
+    padding: 8px 16px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    background: rgba(0,0,0,0.55);
+    backdrop-filter: blur(4px);
+    z-index: 10;
+    pointer-events: none;
+  }
+  #timerDisplay {
+    font-size: clamp(18px, 4vw, 28px);
+    font-weight: 900;
+    letter-spacing: 3px;
+    color: #e8e0c8;
+  }
+  #timerDisplay.urgent { color: #e74c3c; animation: pulse 0.5s ease infinite alternate; }
+  @keyframes pulse { from { opacity: 1; } to { opacity: 0.5; } }
+  .hud-info { font-size: 12px; color: #8899aa; text-align: center; }
+  .hud-role { font-weight: 700; font-size: 14px; }
+  #objectiveHp { color: #f39c12; font-weight: 700; }
+  #defenderHp { color: #3498db; font-weight: 700; }
+  #cooldownBar {
+    width: 80px; height: 6px;
+    background: rgba(255,255,255,0.15);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  #cooldownFill {
+    height: 100%;
+    background: #e74c3c;
+    border-radius: 3px;
+    transition: width 0.05s linear;
+  }
+
+  /* Mobile D-pad */
+  #dpad {
+    position: fixed;
+    bottom: 30px; left: 20px;
+    z-index: 20;
+    display: none;
+  }
+  .dpad-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 52px);
+    grid-template-rows: repeat(3, 52px);
+    gap: 4px;
+  }
+  .dpad-btn {
+    background: rgba(255,255,255,0.12);
+    border: 2px solid rgba(255,255,255,0.2);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 20px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    user-select: none;
+    -webkit-user-select: none;
+    touch-action: none;
+    transition: background 0.1s;
+  }
+  .dpad-btn:active, .dpad-btn.pressed {
+    background: rgba(255,255,255,0.3);
+  }
+  .dpad-empty { background: transparent; border: none; }
+
+  /* Fire button */
+  #fireBtn {
+    position: fixed;
+    bottom: 50px; right: 28px;
+    z-index: 20;
+    display: none;
+    width: 72px; height: 72px;
+    border-radius: 50%;
+    background: linear-gradient(135deg, #c0392b, #e74c3c);
+    border: 3px solid rgba(255,255,255,0.3);
+    color: #fff;
+    font-size: 28px;
+    cursor: pointer;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 20px rgba(231,76,60,0.5);
+    user-select: none;
+    touch-action: none;
+  }
+  #fireBtn.attacker-visible { display: flex; }
+
+  /* Result */
+  #resultScreen h2 {
+    font-size: clamp(28px, 7vw, 60px);
+    font-weight: 900;
+    letter-spacing: 4px;
+    text-transform: uppercase;
+    margin-bottom: 40px;
+  }
+  .back-btn {
+    padding: 16px 40px;
+    background: rgba(255,255,255,0.1);
+    border: 2px solid rgba(255,255,255,0.3);
+    border-radius: 10px;
+    color: #fff;
+    font-size: 16px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 2px;
+    transition: all 0.15s;
+    text-transform: uppercase;
+  }
+  .back-btn:hover { background: rgba(255,255,255,0.2); }
+  .back-btn:active { transform: scale(0.95); }
+
+  #statusMsg {
+    position: fixed;
+    top: 60px; left: 50%;
+    transform: translateX(-50%);
+    background: rgba(0,0,0,0.8);
+    padding: 10px 24px;
+    border-radius: 20px;
+    font-weight: 700;
+    font-size: 14px;
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity 0.3s;
+    z-index: 100;
+    white-space: nowrap;
+  }
+  #statusMsg.show { opacity: 1; }
+
+  @media (max-width: 600px) {
+    #dpad { display: block; }
+  }
+</style>
+</head>
+<body>
+<div id="app">
+
+  <!-- TITLE -->
+  <div id="titleScreen" class="screen active">
+    <h1>⚔ Attack &amp; Defend</h1>
+    <p>진영을 선택하고 상대를 기다리세요</p>
+    <div class="role-buttons">
+      <button class="role-btn attacker-btn" onclick="chooseRole('attacker')">⚔ 공격 진영</button>
+      <button class="role-btn defender-btn" onclick="chooseRole('defender')">🛡 방어 진영</button>
+    </div>
+  </div>
+
+  <!-- WAITING -->
+  <div id="waitingScreen" class="screen">
+    <div class="role-badge" id="waitRoleBadge"></div>
+    <div class="spinner"></div>
+    <p>상대방을 기다리는 중...</p>
+    <br>
+    <button class="back-btn" style="margin-top:20px" onclick="cancelWaiting()">취소</button>
+  </div>
+
+  <!-- GAME -->
+  <div id="gameScreen" class="screen">
+    <div id="gameContainer">
+      <canvas id="gameCanvas"></canvas>
+      <div id="hud">
+        <div>
+          <div class="hud-role" id="hudRole"></div>
+          <div class="hud-info" id="hudExtra"></div>
+        </div>
+        <div id="timerDisplay">2:30</div>
+        <div style="text-align:right">
+          <div class="hud-info">목표 내구도: <span id="objectiveHp">5</span>/5</div>
+          <div class="hud-info">수비 체력: <span id="defenderHp">10</span>/10</div>
+        </div>
+      </div>
+    </div>
+    <!-- D-pad -->
+    <div id="dpad">
+      <div class="dpad-grid">
+        <div class="dpad-empty"></div>
+        <button class="dpad-btn" id="dUp" data-dir="up">▲</button>
+        <div class="dpad-empty"></div>
+        <button class="dpad-btn" id="dLeft" data-dir="left">◀</button>
+        <div class="dpad-empty"></div>
+        <button class="dpad-btn" id="dRight" data-dir="right">▶</button>
+        <div class="dpad-empty"></div>
+        <button class="dpad-btn" id="dDown" data-dir="down">▼</button>
+        <div class="dpad-empty"></div>
+      </div>
+    </div>
+    <button id="fireBtn">🏹</button>
+  </div>
+
+  <!-- RESULT -->
+  <div id="resultScreen" class="screen">
+    <h2 id="resultTitle"></h2>
+    <button class="back-btn" onclick="goTitle()">← 처음으로</button>
+  </div>
+
+  <div id="statusMsg"></div>
+</div>
+
+<script>
+// ─────────────────────────────────────────────
+//  FIREBASE CONFIG  (public Realtime Database)
+// ─────────────────────────────────────────────
+const FB_URL = "https://attackdefend-default-rtdb.firebaseio.com";
+
+// Simple REST-based Firebase client (no SDK needed)
+async function fbGet(path) {
+  const r = await fetch(`${FB_URL}/${path}.json`);
+  return r.ok ? r.json() : null;
+}
+async function fbSet(path, data) {
+  await fetch(`${FB_URL}/${path}.json`, {
+    method: 'PUT',
+    body: JSON.stringify(data)
+  });
+}
+async function fbPatch(path, data) {
+  await fetch(`${FB_URL}/${path}.json`, {
+    method: 'PATCH',
+    body: JSON.stringify(data)
+  });
+}
+async function fbDelete(path) {
+  await fetch(`${FB_URL}/${path}.json`, { method: 'DELETE' });
+}
+
+// Long-poll listener
+function fbListen(path, cb, interval = 200) {
+  let lastVal = undefined;
+  const poll = async () => {
+    const v = await fbGet(path);
+    const s = JSON.stringify(v);
+    if (s !== JSON.stringify(lastVal)) {
+      lastVal = v;
+      cb(v);
+    }
+  };
+  poll();
+  const id = setInterval(poll, interval);
+  return () => clearInterval(id);
+}
+
+// ─────────────────────────────────────────────
+//  MAP DEFINITION  (grid 30×22, tile=28px)
+// ─────────────────────────────────────────────
+const TILE = 28;
+const COLS = 30;
+const ROWS = 22;
+
+// 0=floor, 1=wall, 2=void(outside map)
+// Map based on provided image
+const RAW_MAP = [
+  "222222222222222222222222222222",
+  "211111111111111111111111111112",
+  "210000000000000000000000000012",
+  "210000000000000000000000000012",
+  "210001111111111100000000000012",
+  "210001000000010100000000000012",
+  "210001011110010100000000000012",
+  "210001010000010100000001111112",
+  "210001011110010100000001000012",
+  "210001000000010100001111000012",
+  "210001111111111100000000000012",
+  "210000000000000000000000000012",
+  "210000000000000000000000000012",
+  "210000000000000000000001111112",
+  "211110000000000000000000000012",
+  "200010000000000000000000000012",
+  "200010000000000000000000000012",
+  "200011111111100000000000111112",
+  "200000000000000000000000000002",
+  "200000000000000000000000000002",
+  "222222222222222222222222222222",
+  "222222222222222222222222222222",
+];
+
+// Parse
+const MAP_DATA = RAW_MAP.map(row => row.split('').map(Number));
+
+// Key positions (tile coords)
+const ATTACKER_SPAWN = { x: 2, y: 15 };
+const OBJECTIVE_POS  = { x: 24, y: 7 };
+const DEFENDER_SPAWN = { x: 24, y: 7 };
+// Crates (decorative obstacles near objective)
+const CRATE_TILES = [
+  {x:20,y:8},{x:21,y:8},
+];
+
+function isWalkable(tx, ty) {
+  if (tx < 0 || ty < 0 || tx >= COLS || ty >= ROWS) return false;
+  const cell = MAP_DATA[ty]?.[tx];
+  if (cell === 1 || cell === 2) return false;
+  // Crates block movement
+  for (const c of CRATE_TILES) if (c.x === tx && c.y === ty) return false;
+  return true;
+}
+
+// ─────────────────────────────────────────────
+//  GAME STATE
+// ─────────────────────────────────────────────
+let myRole = null;      // 'attacker'|'defender'
+let myId = null;        // unique session id
+let roomId = null;
+let gameState = null;   // synced from server
+let localState = null;  // local simulation
+let unsubscribe = null;
+let gameLoopId = null;
+let lastTime = 0;
+
+// Input
+const keys = {};
+let moveRepeatTimer = { up:0, down:0, left:0, right:0 };
+const MOVE_INITIAL_DELAY = 180;
+const MOVE_REPEAT = 120;
+let mobileDirHeld = null;
+let mobileMoveTimer = 0;
+
+// Arrow management (client-side, broadcast periodically)
+let arrows = [];
+let arrowCooldown = 0;
+const ARROW_COOLDOWN = 800;
+const ARROW_SPEED_TILES_PER_SEC = 7;
+const ARROW_MAX_TILES = 7;
+
+// Canvas
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+// Camera
+let camX = 0, camY = 0;
+
+// ─────────────────────────────────────────────
+//  SCREEN HELPERS
+// ─────────────────────────────────────────────
+function showScreen(id) {
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  document.getElementById(id).classList.add('active');
+}
+
+function showStatus(msg, dur = 2000) {
+  const el = document.getElementById('statusMsg');
+  el.textContent = msg;
+  el.classList.add('show');
+  setTimeout(() => el.classList.remove('show'), dur);
+}
+
+// ─────────────────────────────────────────────
+//  MATCHMAKING
+// ─────────────────────────────────────────────
+function randId() { return Math.random().toString(36).slice(2, 10); }
+
+async function chooseRole(role) {
+  myRole = role;
+  myId = randId();
+  const badge = document.getElementById('waitRoleBadge');
+  badge.textContent = role === 'attacker' ? '⚔ 공격 진영' : '🛡 방어 진영';
+  badge.className = 'role-badge ' + (role === 'attacker' ? 'attacker-color' : 'defender-color');
+  showScreen('waitingScreen');
+
+  // Check for waiting opponent
+  const waiting = await fbGet('lobby');
+  const oppositeRole = role === 'attacker' ? 'defender' : 'attacker';
+
+  let matched = false;
+  if (waiting) {
+    // Find someone waiting for opposite role
+    for (const [wId, wData] of Object.entries(waiting)) {
+      if (wData.role === oppositeRole && wData.status === 'waiting') {
+        // Join their room
+        roomId = wData.roomId;
+        matched = true;
+        await fbPatch(`lobby/${wId}`, { status: 'matched' });
+        await fbPatch(`rooms/${roomId}`, {
+          [role]: { id: myId, x: role === 'attacker' ? ATTACKER_SPAWN.x : DEFENDER_SPAWN.x, y: role === 'attacker' ? ATTACKER_SPAWN.y : DEFENDER_SPAWN.y, dir:'right', alive:true, invincible:false, hp:10 },
+          started: true
+        });
+        break;
+      }
+    }
+  }
+
+  if (!matched) {
+    // Create lobby entry
+    roomId = randId();
+    await fbSet(`lobby/${myId}`, { role, roomId, status: 'waiting' });
+    await fbSet(`rooms/${roomId}`, {
+      attacker: role === 'attacker' ? { id: myId, x: ATTACKER_SPAWN.x, y: ATTACKER_SPAWN.y, dir:'right', alive:true, invincible:false, hp:10 } : null,
+      defender: role === 'defender' ? { id: myId, x: DEFENDER_SPAWN.x, y: DEFENDER_SPAWN.y, dir:'right', alive:true, hp:10 } : null,
+      objective: { hp: 5 },
+      timer: 150,
+      started: false,
+      winner: null,
+      arrows: []
+    });
+    // Poll for match
+    unsubscribe = fbListen(`lobby/${myId}`, async (data) => {
+      if (data && data.status === 'matched') {
+        if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+        await fbDelete(`lobby/${myId}`);
+        startGame();
+      }
+    }, 500);
+    return;
+  }
+
+  await fbDelete(`lobby/${myId}`).catch(() => {});
+  startGame();
+}
+
+async function cancelWaiting() {
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  if (myId) await fbDelete(`lobby/${myId}`).catch(() => {});
+  if (roomId) await fbDelete(`rooms/${roomId}`).catch(() => {});
+  goTitle();
+}
+
+// ─────────────────────────────────────────────
+//  GAME START
+// ─────────────────────────────────────────────
+function startGame() {
+  resizeCanvas();
+  showScreen('gameScreen');
+  const hudRole = document.getElementById('hudRole');
+  hudRole.textContent = myRole === 'attacker' ? '⚔ 공격 진영' : '🛡 방어 진영';
+  hudRole.className = 'hud-role ' + (myRole === 'attacker' ? 'attacker-color' : 'defender-color');
+  if (myRole === 'attacker') document.getElementById('fireBtn').classList.add('attacker-visible');
+
+  // Init local simulation
+  localState = {
+    attacker: { x: ATTACKER_SPAWN.x, y: ATTACKER_SPAWN.y, dir: 'right', alive: true, invincible: false, invTimer: 0, hp:10 },
+    defender: { x: DEFENDER_SPAWN.x, y: DEFENDER_SPAWN.y, dir: 'right', alive: true, deadTimer: 0, hp:10 },
+    objective: { hp: 5 },
+    timer: 150,
+    winner: null,
+    arrows: []
+  };
+  arrows = [];
+  arrowCooldown = 0;
+  lastTime = performance.now();
+
+  // Start sync listener
+  unsubscribe = fbListen(`rooms/${roomId}`, (data) => {
+    if (!data) return;
+    gameState = data;
+    if (data.winner && data.winner !== 'pending') {
+      endGame(data.winner);
+    }
+  }, 150);
+
+  // Start game loop
+  gameLoopId = requestAnimationFrame(gameLoop);
+  // Start server timer (only attacker manages timer)
+  if (myRole === 'attacker') serverTimerLoop();
+}
+
+let serverTimerInterval = null;
+function serverTimerLoop() {
+  let t = 150;
+  serverTimerInterval = setInterval(async () => {
+    t -= 0.2;
+    if (t <= 0) {
+      clearInterval(serverTimerInterval);
+      await fbPatch(`rooms/${roomId}`, { timer: 0, winner: 'defender' });
+    } else {
+      await fbPatch(`rooms/${roomId}`, { timer: Math.max(0, t) });
+    }
+  }, 200);
+}
+
+// ─────────────────────────────────────────────
+//  GAME LOOP
+// ─────────────────────────────────────────────
+function gameLoop(now) {
+  const dt = Math.min(now - lastTime, 100);
+  lastTime = now;
+
+  if (!localState) { gameLoopId = requestAnimationFrame(gameLoop); return; }
+
+  handleInput(dt);
+  updateArrows(dt);
+  checkCollisions();
+  syncToServer();
+  updateHUD();
+  render();
+
+  gameLoopId = requestAnimationFrame(gameLoop);
+}
+
+// ─────────────────────────────────────────────
+//  INPUT
+// ─────────────────────────────────────────────
+function handleInput(dt) {
+  const me = myRole === 'attacker' ? localState.attacker : localState.defender;
+  if (!me.alive) return;
+  if (myRole === 'attacker' && me.invincible) {} // can still move while invincible
+
+  const dirs = ['up','down','left','right'];
+  for (const dir of dirs) {
+    const held = keys[dir] || mobileDirHeld === dir;
+    if (held) {
+      moveRepeatTimer[dir] += dt;
+      if (moveRepeatTimer[dir] >= (moveRepeatTimer[dir] > dt ? MOVE_REPEAT : MOVE_INITIAL_DELAY)) {
+        moveRepeatTimer[dir] = 0;
+        tryMove(dir);
+      }
+    } else {
+      if (moveRepeatTimer[dir] > 0) {
+        moveRepeatTimer[dir] = 0;
+      }
+    }
+  }
+
+  // Cooldown tick
+  if (arrowCooldown > 0) arrowCooldown -= dt;
+  if (me.invTimer > 0) {
+    me.invTimer -= dt;
+    if (me.invTimer <= 0) { me.invincible = false; me.invTimer = 0; }
+  }
+  if (!me.alive && me.deadTimer > 0) {
+    me.deadTimer -= dt;
+    if (me.deadTimer <= 0) respawn();
+  }
+}
+
+function tryMove(dir) {
+  const me = myRole === 'attacker' ? localState.attacker : localState.defender;
+  if (!me.alive) return;
+  let nx = me.x, ny = me.y;
+  if (dir === 'up') ny--; if (dir === 'down') ny++;
+  if (dir === 'left') nx--; if (dir === 'right') nx++;
+  me.dir = dir;
+  if (isWalkable(nx, ny)) { me.x = nx; me.y = ny; }
+}
+
+function fireArrow() {
+  if (myRole !== 'attacker') return;
+  if (arrowCooldown > 0) return;
+  const me = localState.attacker;
+  if (!me.alive) return;
+  arrowCooldown = ARROW_COOLDOWN;
+  const dirMap = { up:[0,-1], down:[0,1], left:[-1,0], right:[1,0] };
+  const [dx, dy] = dirMap[me.dir] || [1, 0];
+  arrows.push({
+    x: me.x + 0.5, y: me.y + 0.5,
+    dx, dy,
+    distLeft: ARROW_MAX_TILES,
+    id: randId()
+  });
+}
+
+// ─────────────────────────────────────────────
+//  ARROWS
+// ─────────────────────────────────────────────
+function updateArrows(dt) {
+  const speed = ARROW_SPEED_TILES_PER_SEC * 2; // tiles/sec
+  const toRemove = [];
+  for (const a of arrows) {
+    const dist = speed * dt / 1000;
+    a.x += a.dx * dist;
+    a.y += a.dy * dist;
+    a.distLeft -= dist;
+    if (a.distLeft <= 0) toRemove.push(a.id);
+  }
+  arrows = arrows.filter(a => !toRemove.includes(a.id));
+}
+
+function checkCollisions() {
+  if (!localState) return;
+  const def = localState.defender;
+  const atk = localState.attacker;
+
+  // Arrow vs objective / defender
+  for (const a of [...arrows]) {
+    const tx = Math.floor(a.x), ty = Math.floor(a.y);
+    // Vs objective
+    if (localState.objective.hp > 0 && tx === OBJECTIVE_POS.x && ty === OBJECTIVE_POS.y) {
+      localState.objective.hp--;
+      arrows = arrows.filter(x => x.id !== a.id);
+      if (localState.objective.hp <= 0) {
+        // Notify server
+        fbPatch(`rooms/${roomId}`, { winner: 'attacker', 'objective/hp': 0 });
+      } else {
+        fbPatch(`rooms/${roomId}`, { 'objective/hp': localState.objective.hp });
+      }
+      continue;
+    }
+    // Vs defender (only if alive)
+    if (def.alive && tx === def.x && ty === def.y) {
+      def.hp--;
+      arrows = arrows.filter(x => x.id !== a.id);
+      if (def.hp <= 0) {
+        def.alive = false;
+        def.hp = 10;
+        def.deadTimer = 2000;
+      }
+      syncDefenderHp();
+      continue;
+    }
+  }
+
+  // Defender steps on attacker
+  if (def.alive && atk.alive && !atk.invincible && gameState) {
+    // Use synced positions for cross-player collision
+    const syncedAtk = gameState.attacker;
+    const syncedDef = gameState.defender;
+    if (syncedAtk && syncedDef && syncedAtk.x === syncedDef.x && syncedAtk.y === syncedDef.y) {
+      if (myRole === 'attacker') {
+        atk.alive = false;
+        atk.deadTimer = 2000;
+        fbPatch(`rooms/${roomId}`, { 'attacker/alive': false });
+      }
+    }
+  }
+}
+
+function respawn() {
+  if (myRole === 'attacker') {
+    const me = localState.attacker;
+    me.x = ATTACKER_SPAWN.x; me.y = ATTACKER_SPAWN.y;
+    me.alive = true;
+    me.invincible = true;
+    me.invTimer = 2000;
+    me.deadTimer = 0;
+  } else {
+    const me = localState.defender;
+    me.x = DEFENDER_SPAWN.x; me.y = DEFENDER_SPAWN.y;
+    me.alive = true;
+    me.hp = 10;
+    me.deadTimer = 0;
+  }
+}
+
+async function syncDefenderHp() {
+  if (!gameState) return;
+  await fbPatch(`rooms/${roomId}`, { 'defender/hp': localState.defender.hp, 'defender/alive': localState.defender.alive });
+}
+
+// Push local position to server
+let syncThrottle = 0;
+async function syncToServer() {
+  syncThrottle++;
+  if (syncThrottle % 3 !== 0) return;
+  if (!roomId) return;
+  const me = myRole === 'attacker' ? localState.attacker : localState.defender;
+  const arrowData = myRole === 'attacker' ? arrows.map(a => ({x:a.x,y:a.y,dx:a.dx,dy:a.dy,id:a.id})) : undefined;
+  const patch = { [`${myRole}/x`]: me.x, [`${myRole}/y`]: me.y, [`${myRole}/dir`]: me.dir,
+    [`${myRole}/alive`]: me.alive, [`${myRole}/invincible`]: me.invincible || false,
+    [`${myRole}/hp`]: me.hp };
+  if (arrowData !== undefined) patch.arrows = arrowData;
+  await fbPatch(`rooms/${roomId}`, patch);
+}
+
+// ─────────────────────────────────────────────
+//  HUD
+// ─────────────────────────────────────────────
+function updateHUD() {
+  const timer = gameState ? gameState.timer : localState.timer;
+  const secs = Math.ceil(timer);
+  const m = Math.floor(secs / 60);
+  const s = secs % 60;
+  const timerEl = document.getElementById('timerDisplay');
+  timerEl.textContent = `${m}:${s.toString().padStart(2,'0')}`;
+  timerEl.className = 'timer-display' + (secs <= 30 ? ' urgent' : '');
+
+  const objHp = gameState ? (gameState.objective?.hp ?? 5) : localState.objective.hp;
+  const defHp = gameState ? (gameState.defender?.hp ?? 10) : localState.defender.hp;
+  document.getElementById('objectiveHp').textContent = Math.max(0, objHp);
+  document.getElementById('defenderHp').textContent = Math.max(0, defHp);
+
+  const extra = document.getElementById('hudExtra');
+  if (myRole === 'attacker') {
+    const cd = Math.max(0, arrowCooldown / ARROW_COOLDOWN * 100);
+    extra.innerHTML = `쿨다운: <div id="cooldownBar"><div id="cooldownFill" style="width:${100-cd}%"></div></div>`;
+  }
+}
+
+// ─────────────────────────────────────────────
+//  RENDER
+// ─────────────────────────────────────────────
+function resizeCanvas() {
+  const maxW = window.innerWidth;
+  const maxH = window.innerHeight - 50;
+  const mapW = COLS * TILE;
+  const mapH = ROWS * TILE;
+  const scale = Math.min(maxW / mapW, maxH / mapH, 1);
+  canvas.width = Math.floor(mapW * scale);
+  canvas.height = Math.floor(mapH * scale);
+  canvas.style.width = canvas.width + 'px';
+  canvas.style.height = canvas.height + 'px';
+}
+
+function render() {
+  if (!localState) return;
+  const scale = canvas.width / (COLS * TILE);
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+  ctx.save();
+  ctx.scale(scale, scale);
+
+  // Draw map
+  for (let ty = 0; ty < ROWS; ty++) {
+    for (let tx = 0; tx < COLS; tx++) {
+      const cell = MAP_DATA[ty][tx];
+      const px = tx * TILE, py = ty * TILE;
+      if (cell === 2) { ctx.fillStyle = '#1a1f2e'; ctx.fillRect(px,py,TILE,TILE); continue; }
+      if (cell === 1) {
+        // Wall
+        ctx.fillStyle = '#3a4155';
+        ctx.fillRect(px,py,TILE,TILE);
+        ctx.fillStyle = '#4a5168';
+        ctx.fillRect(px,py,TILE,3);
+        ctx.fillRect(px,py,3,TILE);
+        ctx.fillStyle = '#2e3448';
+        ctx.fillRect(px,py+TILE-3,TILE,3);
+        ctx.fillRect(px+TILE-3,py,3,TILE);
+        continue;
+      }
+      // Floor
+      ctx.fillStyle = '#c8ccd8';
+      ctx.fillRect(px,py,TILE,TILE);
+      ctx.fillStyle = '#b8bcc8';
+      ctx.strokeStyle = '#b0b4c0';
+      ctx.lineWidth = 0.5;
+      ctx.strokeRect(px,py,TILE,TILE);
+    }
+  }
+
+  // Crates
+  for (const c of CRATE_TILES) {
+    const px = c.x * TILE, py = c.y * TILE;
+    ctx.fillStyle = '#c8922a';
+    ctx.fillRect(px+1,py+1,TILE-2,TILE-2);
+    ctx.fillStyle = '#e8b040';
+    ctx.fillRect(px+2,py+2,TILE/2-2,TILE/2-2);
+    ctx.fillStyle = '#8b6010';
+    ctx.fillRect(px,py+TILE/2-1,TILE,2);
+    ctx.fillRect(px+TILE/2-1,py,2,TILE);
+  }
+
+  // Attacker spawn zone
+  {
+    const px = ATTACKER_SPAWN.x*TILE, py = ATTACKER_SPAWN.y*TILE;
+    ctx.fillStyle = 'rgba(200,50,50,0.25)';
+    ctx.fillRect(px-TILE, py-TILE, TILE*3, TILE*3);
+    ctx.strokeStyle = 'rgba(220,60,60,0.6)';
+    ctx.lineWidth = 2;
+    ctx.strokeRect(px-TILE, py-TILE, TILE*3, TILE*3);
+  }
+
+  // Objective
+  if (localState.objective.hp > 0) {
+    const serverObjHp = gameState?.objective?.hp ?? localState.objective.hp;
+    const objHp = Math.max(0, Math.min(5, serverObjHp));
+    const px = OBJECTIVE_POS.x*TILE, py = OBJECTIVE_POS.y*TILE;
+    // Glow
+    const grd = ctx.createRadialGradient(px+TILE/2, py+TILE/2, 2, px+TILE/2, py+TILE/2, TILE);
+    grd.addColorStop(0, 'rgba(100,200,255,0.7)');
+    grd.addColorStop(1, 'rgba(100,200,255,0)');
+    ctx.fillStyle = grd;
+    ctx.fillRect(px-TILE/2, py-TILE/2, TILE*2, TILE*2);
+    // Core
+    ctx.fillStyle = '#4488ff';
+    ctx.beginPath();
+    ctx.arc(px+TILE/2, py+TILE/2, TILE*0.38, 0, Math.PI*2);
+    ctx.fill();
+    ctx.fillStyle = '#88ccff';
+    ctx.beginPath();
+    ctx.arc(px+TILE/2-2, py+TILE/2-2, TILE*0.16, 0, Math.PI*2);
+    ctx.fill();
+    // HP bar
+    ctx.fillStyle = '#333';
+    ctx.fillRect(px, py+TILE+2, TILE, 5);
+    ctx.fillStyle = '#4af';
+    ctx.fillRect(px, py+TILE+2, TILE * objHp/5, 5);
+  }
+
+  // Sync remote player
+  const remoteRole = myRole === 'attacker' ? 'defender' : 'attacker';
+  const remoteData = gameState ? gameState[remoteRole] : null;
+
+  // Draw defender
+  const defData = myRole === 'defender' ? localState.defender : remoteData;
+  if (defData) {
+    if (defData.alive) {
+      drawCharacter(defData.x, defData.y, defData.dir, '#2980b9', '🛡', defData.hp, 10);
+    } else {
+      drawTombstone(defData.x, defData.y);
+    }
+  }
+
+  // Draw attacker
+  const atkData = myRole === 'attacker' ? localState.attacker : remoteData;
+  if (atkData) {
+    if (atkData.alive) {
+      drawCharacter(atkData.x, atkData.y, atkData.dir, '#e74c3c', '⚔', null, null, atkData.invincible);
+    }
+  }
+
+  // Draw arrows (attacker's own)
+  if (myRole === 'attacker') {
+    for (const a of arrows) drawArrow(a);
+  } else if (gameState?.arrows) {
+    for (const a of gameState.arrows) drawArrow(a);
+  }
+
+  ctx.restore();
+}
+
+function drawCharacter(tx, ty, dir, color, icon, hp, maxHp, invincible) {
+  const px = tx * TILE, py = ty * TILE;
+  if (invincible && Math.floor(Date.now()/150) % 2 === 0) return; // blink
+  // Shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.25)';
+  ctx.beginPath();
+  ctx.ellipse(px+TILE/2, py+TILE-3, TILE*0.35, 5, 0, 0, Math.PI*2);
+  ctx.fill();
+  // Body
+  ctx.fillStyle = color;
+  const r = TILE * 0.38;
+  ctx.beginPath();
+  ctx.arc(px+TILE/2, py+TILE/2, r, 0, Math.PI*2);
+  ctx.fill();
+  ctx.fillStyle = 'rgba(255,255,255,0.25)';
+  ctx.beginPath();
+  ctx.arc(px+TILE/2-2, py+TILE/2-2, r*0.45, 0, Math.PI*2);
+  ctx.fill();
+  // Direction indicator
+  const dirMap = { up:[0,-1],down:[0,1],left:[-1,0],right:[1,0] };
+  const [ddx,ddy] = dirMap[dir]||[1,0];
+  ctx.fillStyle = 'rgba(255,255,255,0.8)';
+  ctx.beginPath();
+  ctx.arc(px+TILE/2+ddx*r*0.55, py+TILE/2+ddy*r*0.55, 4, 0, Math.PI*2);
+  ctx.fill();
+  // HP bar
+  if (hp !== null) {
+    ctx.fillStyle = '#222';
+    ctx.fillRect(px, py-8, TILE, 4);
+    ctx.fillStyle = hp > maxHp*0.5 ? '#2ecc71' : '#e74c3c';
+    ctx.fillRect(px, py-8, TILE*hp/maxHp, 4);
+  }
+}
+
+function drawTombstone(tx, ty) {
+  const px = tx*TILE, py = ty*TILE;
+  ctx.fillStyle = '#666';
+  ctx.fillRect(px+TILE*0.3, py+TILE*0.3, TILE*0.4, TILE*0.6);
+  ctx.beginPath();
+  ctx.arc(px+TILE/2, py+TILE*0.3, TILE*0.2, Math.PI, 0);
+  ctx.fill();
+  ctx.fillStyle = '#888';
+  ctx.font = `${TILE*0.35}px sans-serif`;
+  ctx.textAlign = 'center';
+  ctx.fillText('✝', px+TILE/2, py+TILE*0.62);
+}
+
+function drawArrow(a) {
+  const px = a.x * TILE, py = a.y * TILE;
+  ctx.save();
+  ctx.translate(px, py);
+  const angle = Math.atan2(a.dy, a.dx);
+  ctx.rotate(angle);
+  ctx.fillStyle = '#f39c12';
+  ctx.fillRect(-TILE*0.3, -2, TILE*0.5, 4);
+  ctx.fillStyle = '#c0392b';
+  ctx.beginPath();
+  ctx.moveTo(TILE*0.2, -4);
+  ctx.lineTo(TILE*0.35, 0);
+  ctx.lineTo(TILE*0.2, 4);
+  ctx.fill();
+  ctx.restore();
+}
+
+// ─────────────────────────────────────────────
+//  END GAME
+// ─────────────────────────────────────────────
+let ended = false;
+function endGame(winner) {
+  if (ended) return;
+  ended = true;
+  cancelAnimationFrame(gameLoopId);
+  clearInterval(serverTimerInterval);
+  if (unsubscribe) { unsubscribe(); unsubscribe = null; }
+  const titleEl = document.getElementById('resultTitle');
+  if (winner === 'attacker') {
+    titleEl.textContent = '⚔ 공격 승리!';
+    titleEl.style.color = '#e74c3c';
+  } else {
+    titleEl.textContent = '🛡 방어 승리!';
+    titleEl.style.color = '#3498db';
+  }
+  showScreen('resultScreen');
+}
+
+function goTitle() {
+  ended = false;
+  localState = null;
+  gameState = null;
+  myRole = null;
+  myId = null;
+  roomId = null;
+  arrows = [];
+  document.getElementById('fireBtn').classList.remove('attacker-visible');
+  showScreen('titleScreen');
+}
+
+// ─────────────────────────────────────────────
+//  KEYBOARD
+// ─────────────────────────────────────────────
+const KEY_MAP = {
+  ArrowUp: 'up', ArrowDown: 'down', ArrowLeft: 'left', ArrowRight: 'right',
+  w:'up', s:'down', a:'left', d:'right'
+};
+document.addEventListener('keydown', e => {
+  const dir = KEY_MAP[e.key];
+  if (dir) {
+    e.preventDefault();
+    if (!keys[dir]) { keys[dir] = true; moveRepeatTimer[dir] = MOVE_INITIAL_DELAY - 16; tryMove(dir); }
+  }
+  if (e.code === 'Space') { e.preventDefault(); fireArrow(); }
+});
+document.addEventListener('keyup', e => {
+  const dir = KEY_MAP[e.key];
+  if (dir) { keys[dir] = false; moveRepeatTimer[dir] = 0; }
+});
+
+// ─────────────────────────────────────────────
+//  MOBILE DPAD
+// ─────────────────────────────────────────────
+document.querySelectorAll('.dpad-btn').forEach(btn => {
+  const dir = btn.dataset.dir;
+  btn.addEventListener('touchstart', e => { e.preventDefault(); mobileDirHeld = dir; btn.classList.add('pressed'); tryMove(dir); moveRepeatTimer[dir] = MOVE_INITIAL_DELAY - 16; }, { passive: false });
+  btn.addEventListener('touchend', e => { e.preventDefault(); mobileDirHeld = null; btn.classList.remove('pressed'); moveRepeatTimer[dir] = 0; }, { passive: false });
+});
+document.getElementById('fireBtn').addEventListener('touchstart', e => { e.preventDefault(); fireArrow(); }, { passive: false });
+document.getElementById('fireBtn').addEventListener('click', fireArrow);
+
+window.addEventListener('resize', () => { if (document.getElementById('gameScreen').classList.contains('active')) resizeCanvas(); });
+</script>
+</body>
+</html>
